@@ -36,8 +36,8 @@ COLOR_YELLOW:
     .word 0xffff00
 COLOR_GREEN:
     .word 0x00ff00
-COLOR_BLUE:
-    .word 0x0000ff
+COLOR_PINK:
+    .word 0xff69b4
 
 # Constants
 SCREEN_WIDTH:
@@ -66,7 +66,7 @@ BALL_X:
     .word 1
 # Ball y-coordinate
 BALL_Y:
-    .word 32
+    .word 30
 # Ball x-velocity
 BALL_DX:
     .word -1
@@ -83,6 +83,9 @@ BALL_DY:
 main:
     # Initialize the keyboard
     lw $s7, ADDR_KBRD               # $s7 = base address for keyboard
+    
+    li $s5, 0 # $s5 is the score
+    jal initialize_score
     
     # Draw the borders around the top and sides
     li $a1, 7
@@ -176,6 +179,9 @@ paint_black:
     jr $ra
 
 move_ball:
+    addi $sp, $sp, -4    # Make space on stack
+    sw $ra, 0($sp)       # Store the main $ra on stack
+    
     lw $t0, ADDR_DSPL # Load display address
     lw $t1, COLOR_BLACK
     lw $t2, COLOR_WHITE
@@ -198,10 +204,25 @@ move_ball:
     lw $t6, 0($t6) # Get color right of ball
     lw $t7, 0($t7) # Get color above ball
     
-    beq $s0, 1, change_x        # Check on left border
-    beq $s0, 62, change_x       # Check on right border
-    beq $s1, 8, change_y        # Check on top border
-    beq $t2, $t4, change_y      # Check if collides with paddle
+    # Check for collision with border
+    beq $s0, 1, change_x
+    beq $s0, 62, change_x
+    beq $s1, 8, change_y
+    
+    # Check for collision with paddle
+    beq $t2, $t4, change_y      # Check if collides with paddle below
+    beq $t2, $t5, change_x      # Check if collides with paddle left
+    beq $t2, $t6, change_x      # Check if collides with paddle right
+    
+    lw $t2, COLOR_RED
+    
+    # Check for collision with red brick
+    beq $t2, $t4, change_y_brick_br
+    beq $t2, $t7, change_y_brick_ar
+    beq $t2, $t5, change_x_brick_lr
+    beq $t2, $t6, change_x_brick_rr
+    
+    # Check for collision with brick
     bne $t1, $t4, change_y_brick_b      # Check if ball collides below
     bne $t1, $t7, change_y_brick_a      # Check if ball collides above
     bne $t1, $t5, change_x_brick_l      # Check if ball collides left
@@ -211,7 +232,9 @@ move_ball:
     increment_ball_coordinates:
         add $s0, $s0, $s2
         add $s1, $s1, $s3
-    
+        
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4   # Move the stack pointer back to the top of the stack
     jr $ra
     
 change_x:
@@ -221,6 +244,10 @@ change_x:
 change_y:
     mul $s3, $s3, -1
     j increment_ball_coordinates
+
+##########################################################################################
+################################# BRICK COLLISION CODE ###################################
+##########################################################################################
 
 change_x_brick_l:
     mul $s2, $s2, -1
@@ -239,9 +266,6 @@ change_y_brick_a:
     j find_brick_a
 
 remove_brick_l:
-    addi $sp, $sp, -4    # Make space on stack
-    sw $ra, 0($sp)       # Store the main $ra on stack
-    
     lw $t0, ADDR_DSPL # Load display address
     lw $t1, COLOR_BLACK
     
@@ -263,9 +287,6 @@ remove_brick_l:
         j remove_l_loop
 
 remove_brick_r:
-    addi $sp, $sp, -4    # Make space on stack
-    sw $ra, 0($sp)       # Store the main $ra on stack
-    
     lw $t0, ADDR_DSPL # Load display address
     lw $t1, COLOR_BLACK
     
@@ -287,8 +308,6 @@ remove_brick_r:
         j remove_r_loop
 
 find_brick_b:
-    addi $sp, $sp, -4    # Make space on stack
-    sw $ra, 0($sp)       # Store the main $ra on stack
     
     # Find the closest starting position of a brick to the left
     li $a0, 53
@@ -327,8 +346,6 @@ remove_brick_b:
         j remove_b_loop
 
 find_brick_a:
-    addi $sp, $sp, -4    # Make space on stack
-    sw $ra, 0($sp)       # Store the main $ra on stack
     
     # Find the closest starting position of a brick to the left
     li $a0, 53
@@ -366,9 +383,267 @@ remove_brick_a:
         addi $t0, $t0, 4
         addi $t2, $t2, 1
         j remove_a_loop
+        
+        
+##########################################################################################
+############################### RED BRICK COLLISION CODE #################################
+##########################################################################################
+change_x_brick_lr:
+    mul $s2, $s2, -1
+    j remove_brick_lr
+    
+change_x_brick_rr:
+    mul $s2, $s2, -1
+    j remove_brick_rr
+
+change_y_brick_br:
+    mul $s3, $s3, -1
+    j find_brick_br
+
+change_y_brick_ar:
+    mul $s3, $s3, -1
+    j find_brick_ar
+
+
+remove_brick_lr:
+    lw $t0, ADDR_DSPL # Load display address
+    lw $t1, COLOR_PINK
+    
+    lw $t9, SCREEN_HEIGHT # Load screen width
+    mul $t8, $t9, $s1 # Multiply the line I want the ball to start on by 
+    add $t0, $t0, $t8 # Move down to line specified by BALL_Y
+    
+    li $t3, 4 # Load pixel size
+    mul $t8, $t3, $s0 # Multiply the x location by pixel size
+    add $t0, $t0, $t8 # Move over the pixels specified by BALL_X
+    addi $t0, $t0, -4
+    
+    li $t2, 0 # Set counter
+    remove_l_loop:
+        beq $t2, 8, remove_brick_end
+        sw $t1, ($t0)
+        sub $t0, $t0, 4
+        addi $t2, $t2, 1
+        j remove_l_loop
+
+remove_brick_rr:
+    lw $t0, ADDR_DSPL # Load display address
+    lw $t1, COLOR_PINK
+    
+    lw $t9, SCREEN_HEIGHT # Load screen width
+    mul $t8, $t9, $s1 # Multiply the line I want the ball to start on by 
+    add $t0, $t0, $t8 # Move down to line specified by BALL_Y
+    
+    li $t3, 4 # Load pixel size
+    mul $t8, $t3, $s0 # Multiply the x location by pixel size
+    add $t0, $t0, $t8 # Move over the pixels specified by BALL_X
+    addi $t0, $t0, 4
+    
+    li $t2, 0 # Set counter
+    remove_r_loop:
+        beq $t2, 8, remove_brick_end
+        sw $t1, ($t0)
+        addi $t0, $t0, 4
+        addi $t2, $t2, 1
+        j remove_r_loop
+
+find_brick_br:
+    
+    # Find the closest starting position of a brick to the left
+    li $a0, 53
+    bge $s0, $a0, remove_brick_br # BALL_X >= 53
+    li $a0, 43
+    bge $s0, $a0, remove_brick_br # BALL_X >= 43
+    li $a0, 33
+    bge $s0, $a0, remove_brick_br # BALL_X >= 33
+    li $a0, 23
+    bge $s0, $a0, remove_brick_br # BALL_X >= 23
+    li $a0, 13
+    bge $s0, $a0, remove_brick_br # BALL_X >= 13
+    li $a0, 3
+    bge $s0, $a0, remove_brick_br # BALL_X >= 3
+
+# Input: $a0 : starting x position
+remove_brick_br:
+    lw $t0, ADDR_DSPL # Load display address
+    lw $t1, COLOR_PINK
+    
+    lw $t9, SCREEN_HEIGHT # Load screen width
+    mul $t8, $t9, $s1 # Multiply the line I want the ball to start on by 
+    add $t0, $t0, $t8 # Move down to line specified by BALL_Y
+    add $t0, $t0, $t9 # Move down one line to the brick line
+    
+    li $t3, 4 # Load pixel size
+    mul $t8, $t3, $a0 # Multiply the x location of brick by pixel size
+    add $t0, $t0, $t8 # Move over the pixels specified by start of brick
+    
+    li $t2, 0 # Set counter
+    remove_b_loop:
+        beq $t2, 8, remove_brick_end
+        sw $t1, ($t0)
+        addi $t0, $t0, 4
+        addi $t2, $t2, 1
+        j remove_b_loop
+
+find_brick_ar:
+    
+    # Find the closest starting position of a brick to the left
+    li $a0, 53
+    bge $s0, $a0, remove_brick_ar # BALL_X >= 53
+    li $a0, 43
+    bge $s0, $a0, remove_brick_ar # BALL_X >= 43
+    li $a0, 33
+    bge $s0, $a0, remove_brick_ar # BALL_X >= 33
+    li $a0, 23
+    bge $s0, $a0, remove_brick_ar # BALL_X >= 23
+    li $a0, 13
+    bge $s0, $a0, remove_brick_ar # BALL_X >= 13
+    li $a0, 3
+    bge $s0, $a0, remove_brick_ar # BALL_X >= 3
+
+
+# Input: $a0: starting x position
+remove_brick_ar:
+    lw $t0, ADDR_DSPL # Load display address
+    lw $t1, COLOR_PINK
+    
+    lw $t9, SCREEN_HEIGHT # Load screen width
+    mul $t8, $t9, $s1 # Multiply the line I want the ball to start on by 
+    add $t0, $t0, $t8 # Move down to line specified by BALL_Y
+    sub $t0, $t0, $t9 # Move up one line to the brick line
+    
+    li $t3, 4 # Load pixel size
+    mul $t8, $t3, $a0 # Multiply the x location of brick by pixel size
+    add $t0, $t0, $t8 # Move over the pixels specified by start of brick
+    
+    li $t2, 0 # Set counter
+    remove_a_loop:
+        beq $t2, 8, remove_brick_end
+        sw $t1, ($t0)
+        addi $t0, $t0, 4
+        addi $t2, $t2, 1
+        j remove_a_loop
 
 remove_brick_end:
+    jal increment_score
+    beq $s5, 30, winner
     j increment_ball_coordinates
+
+##########################################################################################
+############################### SCORING AND HELPER FUNCS #################################
+##########################################################################################
+
+increment_score:
+    addi $sp, $sp, -4    # Make space on stack
+    sw $ra, 0($sp)       # Store the main $ra on stack
+    
+    jal cover_score
+    addi $s5, $s5, 1
+    
+    lw $a0, ADDR_DSPL # Load display address
+    lw $a1, COLOR_WHITE
+    
+    jal draw_nums
+    j nums_done
+
+cover_score:
+    addi $sp, $sp, -4    # Make space on stack
+    sw $ra, 0($sp)       # Store the main $ra on stack
+
+    # Draw the current score in black
+    lw $a0, ADDR_DSPL # Load display address
+    lw $a1, COLOR_BLACK
+    
+    addi $a0, $a0, 260
+    
+    jal num_clear
+    addi $a0, $a0, 16
+    jal num_clear
+    
+    j nums_done
+    
+draw_nums:
+    addi $sp, $sp, -4    # Make space on stack
+    sw $ra, 0($sp)       # Store the main $ra on stack
+
+    li $t8, 0
+    addi $a0, $a0, 260
+    
+    li $t0, 10
+    div $s5, $t0
+    mfhi $t2
+    mflo $t1
+
+tens_digit:
+    # Paint the 10s digit
+    beq $t1, 3, d3
+    beq $t1, 2, d2
+    beq $t1, 1, d1
+    bgez $t1, d0
+
+ones_digit:
+    addi $t8, $t8, 1
+    # Paint the 1s digit
+    addi $a0, $a0, 16
+    beq $t2, 9, d9
+    beq $t2, 8, d8
+    beq $t2, 7, d7
+    beq $t2, 6, d6
+    beq $t2, 5, d5
+    beq $t2, 4, d4
+    beq $t2, 3, d3
+    beq $t2, 2, d2
+    beq $t2, 1, d1
+    bgez $t2, d0
+    
+    j nums_done
+
+d0:
+    jal draw_0
+    beq $t8, $zero, ones_digit
+    j nums_done
+d1:
+    jal draw_1
+    beq $t8, $zero, ones_digit
+    j nums_done
+d2:
+    jal draw_2
+    beq $t8, $zero, ones_digit
+    j nums_done
+d3:
+    jal draw_3
+    beq $t8, $zero, ones_digit
+    j nums_done
+d4:
+    jal draw_4
+    beq $t8, $zero, ones_digit
+    j nums_done
+d5:
+    jal draw_5
+    beq $t8, $zero, ones_digit
+    j nums_done
+d6:
+    jal draw_6
+    beq $t8, $zero, ones_digit
+    j nums_done
+d7:
+    jal draw_7
+    beq $t8, $zero, ones_digit
+    j nums_done
+d8:
+    jal draw_8
+    beq $t8, $zero, ones_digit
+    j nums_done
+d9:
+    jal draw_9
+    beq $t8, $zero, ones_digit
+    j nums_done
+
+nums_done: 
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4   # Move the stack pointer back to the top of the stack
+    jr $ra # jump back to increment_score
+    
 
 ##############################################
 ### KEYBOARD FUNCTIONS AND PADDLE MOVEMENT ###
@@ -388,7 +663,7 @@ draw_paddle:
     lw $t1, COLOR_WHITE
     
     lw $t9, SCREEN_HEIGHT # Load screen width
-    mul $t8, $t9, 59 # Multiply the line I want the ball to start on by 
+    mul $t8, $t9, 57 # Multiply the line I want the ball to start on by 
     add $t0, $t0, $t8 # Move down to line
     
     li $t3, 4 # Load pixel size
@@ -412,7 +687,7 @@ draw_paddle_black:
     lw $t1, COLOR_BLACK
     
     lw $t9, SCREEN_HEIGHT # Load screen width
-    mul $t8, $t9, 59 # Multiply the line I want the ball to start on by 
+    mul $t8, $t9, 57 # Multiply the line I want the ball to start on by 
     add $t0, $t0, $t8 # Move down to line
     
     li $t3, 4 # Load pixel size
@@ -505,6 +780,34 @@ key_pressed_restart:
     beq $a0, 0x71, quit
     beq $a0, 0x72, main
     j game_over
+
+
+winner:
+    # Draw W in place of the dot
+    jal draw_paddle_black
+    addi $s6, $s6, -1 
+    add $s5, $s5, $s6
+    jal increment_score
+    
+winner_screen:
+    jal draw_letter_W
+    jal draw_letter_R
+    jal draw_letter_Q
+    
+    li      $v0, 32
+    li      $a0, 1
+    syscall
+
+    lw $t8, 0($s7)                   # Load first word from keyboard
+    beq $t8, 1, key_pressed_restart  # If first word 1, key is pressed
+    j winner_screen
+    
+key_pressed_restart:
+    lw $a0, 4($s7)
+    beq $a0, 0x71, quit
+    beq $a0, 0x72, main
+    j winner_screen
+
 
 quit:
     li $v0, 10                      # Quit gracefully
@@ -623,6 +926,7 @@ initialize_paddle:
     jal draw_letter_C
     jal draw_letter_R
     jal draw_letter_Q
+    jal draw_letter_W
     jal draw_dot
     lw $ra, 0($sp) 
     addi $sp, $sp, 4   # Move the stack pointer back to the top of the stack
@@ -712,9 +1016,39 @@ lives_end:
     addi $sp, $sp, 4   # Move the stack pointer back to the top of the stack
     jr $ra
 
+initialize_score:
+    addi $sp, $sp, -4    # Make space on stack
+    sw $ra, 0($sp)       # Store the main $ra on stack
+    
+    lw $a0, ADDR_DSPL # Load display address
+    
+    addi $a0, $a0, 260
+    lw $a1, COLOR_BLACK
+    
+    jal num_clear
+    addi $a0, $a0, 16
+    jal num_clear
+    
+    lw $a0, ADDR_DSPL # Load display address
+    
+    addi $a0, $a0, 260
+    lw $a1, COLOR_WHITE
+    
+    jal draw_0
+    addi $a0, $a0, 16
+    jal draw_0
+    addi $a0, $a0, 16
+    jal draw_0
+    addi $a0, $a0, 16
+    jal draw_0
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4   # Move the stack pointer back to the top of the stack
+    jr $ra
+    
 
 #################################################
-################### LETTERS #####################
+############## LETTERS AND NUMBERS ##############
 #################################################
 
 # * * * 
@@ -1074,4 +1408,578 @@ draw_right_column:
     add $t0, $t0, $t3 # Move to next pixel
     sw $a1, ($t0) # Set color
 
+jr $ra
+
+# *       *
+# *       *
+# *   *   *
+# *   *   *
+#   * * *
+draw_letter_W:
+lw $t0, ADDR_DSPL # Load display address
+    lw $t3, SCREEN_HEIGHT # Load screen height
+    li $t4, 5
+
+# Move the display down 32 pixels
+    li $t2, 32
+    mul $t8, $t3, $t2
+    add $t0, $t0, $t8
+# Move the display over 31 pixels
+    li $t2, 4
+    li $t7, 19
+    mul $t8, $t7, $t2
+    add $t0, $t0, $t8
+draw_left_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    # Draw middle column
+    lw $t0, ADDR_DSPL # Reset display address
+    # Move the display down 32 pixels
+    li $t2, 32
+    mul $t8, $t3, $t2
+    add $t0, $t0, $t8
+# Move the display over 32 pixels
+    li $t2, 4
+    li $t7, 20
+    mul $t8, $t7, $t2
+    add $t0, $t0, $t8
+draw_middle_column:
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    # Draw middle column
+    lw $t0, ADDR_DSPL # Reset display address
+    # Move the display down 32 pixels
+    li $t2, 32
+    mul $t8, $t3, $t2
+    add $t0, $t0, $t8
+# Move the display over 32 pixels
+    li $t2, 4
+    li $t7, 21
+    mul $t8, $t7, $t2
+    add $t0, $t0, $t8
+draw_middle_column:
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    # Draw middle column
+    lw $t0, ADDR_DSPL # Reset display address
+    # Move the display down 32 pixels
+    li $t2, 32
+    mul $t8, $t3, $t2
+    add $t0, $t0, $t8
+# Move the display over 32 pixels
+    li $t2, 4
+    li $t7, 22
+    mul $t8, $t7, $t2
+    add $t0, $t0, $t8
+draw_middle_column:
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    # Draw right column
+    lw $t0, ADDR_DSPL # Reset display address
+    # Move the display down 32 pixels
+    li $t2, 32
+    mul $t8, $t3, $t2
+    add $t0, $t0, $t8
+# Move the display over 33 pixels
+    li $t2, 4
+    li $t7, 23
+    mul $t8, $t7, $t2
+    add $t0, $t0, $t8
+draw_right_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+jr $ra
+
+#   * 
+# *   *
+# *   *
+# *   *
+#   * 
+# Input: 
+#   $a0: location
+#   $a1: color  
+draw_0:
+    lw $t3, SCREEN_HEIGHT
+    add $t0, $zero, $a0
+
+draw_left_column:
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 4
+draw_middle_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 8
+draw_right_column:
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+jr $ra
+
+#     * 
+#   * *
+#     *
+#     *
+#   * * *
+# Input: 
+#   $a0: location
+#   $a1: color  
+draw_1:
+    lw $t3, SCREEN_HEIGHT
+    add $t0, $zero, $a0
+    
+draw_left_column:
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 4
+draw_middle_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 8
+draw_right_column:
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+jr $ra
+
+
+#   * * 
+#       *
+#     *
+#   *
+#   * * *
+# Input: 
+#   $a0: location
+#   $a1: color  
+draw_2:
+    lw $t3, SCREEN_HEIGHT
+    add $t0, $zero, $a0
+
+draw_left_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 4
+draw_middle_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 8
+draw_right_column:
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+jr $ra
+
+
+#   * *  
+#       *
+#     * *
+#       *
+#   * * 
+# Input: 
+#   $a0: location
+#   $a1: color  
+draw_3:
+    lw $t3, SCREEN_HEIGHT
+    add $t0, $zero, $a0
+
+draw_left_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 4
+draw_middle_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 8
+draw_right_column:
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+
+jr $ra
+
+#   *   * 
+#   *   *
+#     * *
+#       *
+#       *
+# Input: 
+#   $a0: location
+#   $a1: color  
+draw_4:
+    lw $t3, SCREEN_HEIGHT
+    add $t0, $zero, $a0
+
+draw_left_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 4
+draw_middle_column:
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 8
+draw_right_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+jr $ra
+
+
+#   * * * 
+#   *
+#   * *
+#       *
+#   * *
+# Input: 
+#   $a0: location
+#   $a1: color  
+draw_5:
+    lw $t3, SCREEN_HEIGHT
+    add $t0, $zero, $a0
+
+draw_left_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 4
+draw_middle_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 8
+draw_right_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    
+jr $ra
+
+#     * * 
+#   *
+#   * * 
+#   *   *
+#     * 
+# Input: 
+#   $a0: location
+#   $a1: color  
+draw_6:
+    lw $t3, SCREEN_HEIGHT
+    add $t0, $zero, $a0
+
+draw_left_column:
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 4
+draw_middle_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 8
+draw_right_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    
+jr $ra
+
+#   * * * 
+#       *
+#       *
+#       *
+#       *
+# Input: 
+#   $a0: location
+#   $a1: color  
+draw_7:
+    lw $t3, SCREEN_HEIGHT
+    add $t0, $zero, $a0
+
+draw_left_column:
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 4
+draw_middle_column:
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 8
+draw_right_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    
+jr $ra
+
+#     *  
+#   *   *
+#     * 
+#   *   *
+#     * 
+# Input: 
+#   $a0: location
+#   $a1: color  
+draw_8:
+    lw $t3, SCREEN_HEIGHT
+    add $t0, $zero, $a0
+
+draw_left_column:
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    
+    add $t0, $zero, $a0
+    addi $t0, $t0, 4
+draw_middle_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 8
+draw_right_column:
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    
+jr $ra
+
+#     *  
+#   *   *
+#     * *
+#       *
+#       *
+# Input: 
+#   $a0: location
+#   $a1: color  
+draw_9:
+    lw $t3, SCREEN_HEIGHT
+    add $t0, $zero, $a0
+    
+draw_left_column:
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 4
+draw_middle_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 8
+draw_right_column:
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    
+jr $ra
+
+#   * * * 
+#   * * *
+#   * * *
+#   * * * 
+#   * * *
+# Input: 
+#   $a0: location
+#   $a1: color  
+num_clear:
+    lw $t3, SCREEN_HEIGHT
+    add $t0, $zero, $a0
+    
+draw_left_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 4
+draw_middle_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+
+    add $t0, $zero, $a0
+    addi $t0, $t0, 8
+draw_right_column:
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    add $t0, $t0, $t3 # Move to next pixel
+    sw $a1, ($t0) # Set color
+    
 jr $ra
