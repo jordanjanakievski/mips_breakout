@@ -6,6 +6,8 @@ This game was built as part of the University of Toronto's Computer Organization
 ## How to compile and run
 Utilizing either MARS or [Saturn](https://github.com/1whatleytay/saturn)
 
+Use the file `breakout.asm`
+
 ## How to Play
 
 Upon running the game, it will immediately start and the ball will be in play
