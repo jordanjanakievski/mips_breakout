@@ -1,7 +1,3 @@
-################ CSC258H1F Winter 2023 Assembly Final Project ##################
-# This file contains my implementation of Breakout.
-#
-# Student 1: Jordan Janakievski, 1007704012
 ######################## Bitmap Display Configuration ########################
 # - Unit width in pixels:       4
 # - Unit height in pixels:      4
